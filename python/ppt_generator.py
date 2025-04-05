@@ -27,11 +27,11 @@ class PPTGenerator:
         slide = self.prs.slides.add_slide(self.prs.slide_layouts[6])  # Blank layout
         
         # Set fixed dimensions for the grid
-        grid_width = 6.0
-        grid_height = 4.0
+        grid_width = 7.0
+        grid_height = 5.0
         
-        # Test with extreme left position
-        grid_left = 2.0  # Fixed 2 inches from left
+        # Position grid more to the left
+        grid_left = 1.5  # Reduced from 2.0 to move grid left
         grid_top = 2.0   # Fixed 2 inches from top
 
         # Always add header (category title)
