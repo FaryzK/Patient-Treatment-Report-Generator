@@ -27,12 +27,38 @@ class PPTGenerator:
         slide = self.prs.slides.add_slide(self.prs.slide_layouts[6])  # Blank layout
         
         # Set fixed dimensions for the grid
-        grid_width = 6.0  # Made smaller for testing
-        grid_height = 4.0  # Made smaller for testing
+        grid_width = 6.0
+        grid_height = 4.0
         
         # Test with extreme left position
         grid_left = 2.0  # Fixed 2 inches from left
         grid_top = 2.0   # Fixed 2 inches from top
+
+        # Add header (category title) if not unknown
+        if category_title.lower() != "unknown":
+            title_box = slide.shapes.add_textbox(
+                Inches(0.5),  # Left margin
+                Inches(0.5),  # Top margin
+                Inches(12.0),  # Width
+                Inches(0.8)   # Height
+            )
+            title_frame = title_box.text_frame
+            title_frame.text = category_title
+            title_frame.paragraphs[0].font.size = Pt(32)
+            title_frame.paragraphs[0].font.bold = True
+            title_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
+
+            # Add placeholder text
+            text_box = slide.shapes.add_textbox(
+                Inches(0.5),  # Left margin
+                Inches(1.3),  # Below title
+                Inches(12.0), # Width
+                Inches(0.5)   # Height
+            )
+            text_frame = text_box.text_frame
+            text_frame.text = "The following visuals provide an overview of treatment outcomes"
+            text_frame.paragraphs[0].font.size = Pt(14)
+            text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
         
         # Calculate individual image dimensions
         img_width = (grid_width - self.grid_spacing) / 2
