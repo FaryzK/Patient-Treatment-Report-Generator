@@ -10,7 +10,7 @@ class PPTGenerator:
         self.prs = Presentation()
         self.slide_width = 13.333
         self.slide_height = 7.5
-        self.margin = 0.5
+        self.margin = 1.0
         self.grid_spacing = 0.25
 
     def _create_title_slide(self, title="Patient Treatment Report"):
@@ -23,25 +23,28 @@ class PPTGenerator:
         subtitle_shape.text = "Generated on " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def _create_image_grid_slide(self, images, category_title):
-        """Create a slide with a 2x2 grid of images."""
+        """Create a slide with a left-aligned 2x2 grid of images."""
         slide = self.prs.slides.add_slide(self.prs.slide_layouts[6])  # Blank layout
         
-        # Add category title
-        title_box = slide.shapes.add_textbox(
-            Inches(self.margin),
-            Inches(self.margin),
-            Inches(self.slide_width - 2 * self.margin),
-            Inches(0.5)
-        )
-        title_frame = title_box.text_frame
-        title_frame.text = category_title
-        title_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
-        title_frame.paragraphs[0].font.size = Pt(24)
-        title_frame.paragraphs[0].font.bold = True
+        # Set fixed dimensions for the grid
+        grid_width = 6.0  # Made smaller for testing
+        grid_height = 4.0  # Made smaller for testing
+        
+        # Test with extreme left position
+        grid_left = 2.0  # Fixed 2 inches from left
+        grid_top = 2.0   # Fixed 2 inches from top
+        
+        # Calculate individual image dimensions
+        img_width = (grid_width - self.grid_spacing) / 2
+        img_height = (grid_height - self.grid_spacing) / 2
 
-        # Calculate image dimensions for 2x2 grid
-        img_width = (self.slide_width - 2 * self.margin - self.grid_spacing) / 2
-        img_height = (self.slide_height - 2 * self.margin - self.grid_spacing - 0.5) / 2
+        # Debug print statements
+        print("\nDebug Layout Information:")
+        print(f"Slide dimensions: {self.slide_width} x {self.slide_height} inches")
+        print(f"Grid dimensions: {grid_width} x {grid_height} inches")
+        print(f"Grid position: left={grid_left}, top={grid_top} inches")
+        print(f"Image dimensions: {img_width} x {img_height} inches")
+        print(f"Grid spacing: {self.grid_spacing} inches")
 
         # Add images to the grid
         for idx, image_data in enumerate(images):
@@ -51,10 +54,16 @@ class PPTGenerator:
             row = idx // 2
             col = idx % 2
             
-            left = self.margin + col * (img_width + self.grid_spacing)
-            top = self.margin + 0.5 + row * (img_height + self.grid_spacing)
+            # Simplified positioning for testing
+            left = grid_left + (col * (img_width + self.grid_spacing))
+            top = grid_top + (row * (img_height + self.grid_spacing))
             
-            # Add the image
+            # Debug print statements for each image
+            print(f"\nImage {idx + 1} position:")
+            print(f"Row: {row}, Column: {col}")
+            print(f"Position: left={left}, top={top} inches")
+            
+            # Add the image with explicit size
             slide.shapes.add_picture(
                 image_data['path'],
                 Inches(left),
@@ -62,18 +71,6 @@ class PPTGenerator:
                 Inches(img_width),
                 Inches(img_height)
             )
-            
-            # Add image label with date
-            label_box = slide.shapes.add_textbox(
-                Inches(left),
-                Inches(top + img_height + 0.1),
-                Inches(img_width),
-                Inches(0.3)
-            )
-            label_frame = label_box.text_frame
-            label_frame.text = f"{image_data['filename']} - {image_data['date']}"
-            label_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
-            label_frame.paragraphs[0].font.size = Pt(10)
 
     def generate_presentation(self, categorized_images, output_path):
         """Generate a PowerPoint presentation from categorized images."""
