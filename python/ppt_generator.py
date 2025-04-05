@@ -34,21 +34,21 @@ class PPTGenerator:
         grid_left = 2.0  # Fixed 2 inches from left
         grid_top = 2.0   # Fixed 2 inches from top
 
-        # Add header (category title) if not unknown
-        if category_title.lower() != "unknown":
-            title_box = slide.shapes.add_textbox(
-                Inches(0.5),  # Left margin
-                Inches(0.5),  # Top margin
-                Inches(12.0),  # Width
-                Inches(0.8)   # Height
-            )
-            title_frame = title_box.text_frame
-            title_frame.text = category_title
-            title_frame.paragraphs[0].font.size = Pt(32)
-            title_frame.paragraphs[0].font.bold = True
-            title_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
+        # Always add header (category title)
+        title_box = slide.shapes.add_textbox(
+            Inches(0.5),  # Left margin
+            Inches(0.5),  # Top margin
+            Inches(12.0),  # Width
+            Inches(0.8)   # Height
+        )
+        title_frame = title_box.text_frame
+        title_frame.text = category_title
+        title_frame.paragraphs[0].font.size = Pt(32)
+        title_frame.paragraphs[0].font.bold = True
+        title_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
 
-            # Add placeholder text
+        # Add placeholder text only for non-unknown categories
+        if category_title.lower() != "unknown":
             text_box = slide.shapes.add_textbox(
                 Inches(0.5),  # Left margin
                 Inches(1.3),  # Below title
@@ -103,8 +103,18 @@ class PPTGenerator:
         # Create title slide
         self._create_title_slide()
         
-        # Create slides for each category
-        for category, images in categorized_images.items():
+        # Define the desired order of categories
+        category_order = [
+            'intra_oral',
+            'front_with_teeth',
+            'front_no_teeth',
+            'side_view',
+            'unknown'  # Keep unknown at the end
+        ]
+        
+        # Create slides for each category in the specified order
+        for category in category_order:
+            images = categorized_images.get(category, [])
             if not images:
                 continue
                 
