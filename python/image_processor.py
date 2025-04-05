@@ -129,12 +129,34 @@ class ImageProcessor:
         results = []
         
         for image_path in image_paths:
+            # Extract basic metadata
             metadata = self.extract_metadata(image_path)
             if metadata:
-                results.append({
+                # Get the classification for this image
+                category = self.classify_image(image_path)
+                
+                # Get a human-readable label for the category
+                category_label = self.categories.get(category, 'Unknown')
+                
+                # Format the date for display
+                date_str = "Unknown"
+                if metadata.get('creation_date'):
+                    date_str = metadata['creation_date'].strftime('%B %d, %Y')
+                
+                # Add classification to metadata
+                metadata['classification'] = category
+                metadata['classification_label'] = category_label
+                
+                # Create a more detailed result object
+                result = {
                     'path': image_path,
                     'metadata': metadata,
-                    'category': None  # Will be filled by classify_image
-                })
+                    'category': category,
+                    'category_label': category_label,
+                    'date': date_str,
+                    'filename': os.path.basename(image_path)
+                }
+                
+                results.append(result)
         
         return results 

@@ -15,16 +15,9 @@ async def process_images(image_paths, output_dir):
         ppt_generator = PPTGenerator()
         
         # Process images to get metadata
-        print("Extracting metadata...")
+        print("Extracting metadata and classifying images...")
         processed_images = image_processor.process_images(image_paths)
         print(f"Processed {len(processed_images)} images")
-        
-        # Classify images
-        print("Classifying images...")
-        for i, image in enumerate(processed_images):
-            print(f"Classifying image {i+1}/{len(processed_images)}: {image['path']}")
-            image['category'] = image_processor.classify_image(image['path'])
-            print(f"Category: {image['category']}")
         
         # Group images by category
         categorized_images = {
@@ -38,6 +31,7 @@ async def process_images(image_paths, output_dir):
         for image in processed_images:
             category = image['category']
             categorized_images[category].append(image)
+            print(f"Image {image['filename']} classified as {image['category_label']} ({category})")
         
         # Print category counts
         for category, images in categorized_images.items():

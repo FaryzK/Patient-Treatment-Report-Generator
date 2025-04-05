@@ -44,7 +44,7 @@ class PPTGenerator:
         img_height = (self.slide_height - 2 * self.margin - self.grid_spacing - 0.5) / 2
 
         # Add images to the grid
-        for idx, image_path in enumerate(images):
+        for idx, image_data in enumerate(images):
             if idx >= 4:  # Maximum 4 images per slide
                 break
                 
@@ -56,12 +56,24 @@ class PPTGenerator:
             
             # Add the image
             slide.shapes.add_picture(
-                image_path,
+                image_data['path'],
                 Inches(left),
                 Inches(top),
                 Inches(img_width),
                 Inches(img_height)
             )
+            
+            # Add image label with date
+            label_box = slide.shapes.add_textbox(
+                Inches(left),
+                Inches(top + img_height + 0.1),
+                Inches(img_width),
+                Inches(0.3)
+            )
+            label_frame = label_box.text_frame
+            label_frame.text = f"{image_data['filename']} - {image_data['date']}"
+            label_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+            label_frame.paragraphs[0].font.size = Pt(10)
 
     def generate_presentation(self, categorized_images, output_path):
         """Generate a PowerPoint presentation from categorized images."""
@@ -76,15 +88,15 @@ class PPTGenerator:
             # Sort images by creation date
             sorted_images = sorted(
                 images,
-                key=lambda x: x['metadata']['creation_date']
+                key=lambda x: x['metadata'].get('creation_date', datetime.min)
             )
             
             # Create slides with 4 images each
             for i in range(0, len(sorted_images), 4):
-                slide_images = [img['path'] for img in sorted_images[i:i+4]]
+                slide_images = sorted_images[i:i+4]
                 self._create_image_grid_slide(
                     slide_images,
-                    category.replace('_', ' ').title()
+                    images[0]['category_label'] if images else category.replace('_', ' ').title()
                 )
         
         # Save the presentation
