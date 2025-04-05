@@ -85,7 +85,7 @@ class PPTGenerator:
             if not images:
                 continue
                 
-            # Sort images by creation date
+            # Sort images by creation date and time
             sorted_images = sorted(
                 images,
                 key=lambda x: x['metadata'].get('creation_date', datetime.min)

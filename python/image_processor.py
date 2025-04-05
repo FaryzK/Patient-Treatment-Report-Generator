@@ -33,7 +33,8 @@ class ImageProcessor:
                     'size': img.size,
                     'format': img.format,
                     'mode': img.mode,
-                    'creation_date': None
+                    'creation_date': None,
+                    'creation_time': None
                 }
 
                 # Try to get EXIF data
@@ -43,20 +44,23 @@ class ImageProcessor:
                         tag = TAGS.get(tag_id, tag_id)
                         data = exif.get(tag_id)
                         
-                        # Look for creation date
+                        # Look for creation date and time
                         if tag == 'DateTimeOriginal':
                             try:
-                                metadata['creation_date'] = datetime.strptime(
+                                date_time = datetime.strptime(
                                     data, '%Y:%m:%d %H:%M:%S'
                                 )
+                                metadata['creation_date'] = date_time
+                                metadata['creation_time'] = date_time.strftime('%H:%M:%S')
                             except ValueError:
                                 pass
 
                 # If no creation date found, use file modification time
                 if not metadata['creation_date']:
-                    metadata['creation_date'] = datetime.fromtimestamp(
-                        os.path.getmtime(image_path)
-                    )
+                    mod_time = os.path.getmtime(image_path)
+                    date_time = datetime.fromtimestamp(mod_time)
+                    metadata['creation_date'] = date_time
+                    metadata['creation_time'] = date_time.strftime('%H:%M:%S')
 
                 return metadata
         except Exception as e:
@@ -138,10 +142,10 @@ class ImageProcessor:
                 # Get a human-readable label for the category
                 category_label = self.categories.get(category, 'Unknown')
                 
-                # Format the date for display
+                # Format the date and time for display
                 date_str = "Unknown"
                 if metadata.get('creation_date'):
-                    date_str = metadata['creation_date'].strftime('%B %d, %Y')
+                    date_str = metadata['creation_date'].strftime('%B %d, %Y %H:%M:%S')
                 
                 # Add classification to metadata
                 metadata['classification'] = category
