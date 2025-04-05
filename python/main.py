@@ -23,7 +23,7 @@ async def process_images(image_paths, output_dir):
         print("Classifying images...")
         for i, image in enumerate(processed_images):
             print(f"Classifying image {i+1}/{len(processed_images)}: {image['path']}")
-            image['category'] = await image_processor.classify_image(image['path'])
+            image['category'] = image_processor.classify_image(image['path'])
             print(f"Category: {image['category']}")
         
         # Group images by category
