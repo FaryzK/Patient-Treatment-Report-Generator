@@ -68,6 +68,7 @@ const ImageUpload = () => {
         });
       }, 300);
 
+      console.log('Sending upload request...');
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
@@ -76,12 +77,30 @@ const ImageUpload = () => {
       clearInterval(progressInterval);
       setUploadProgress(100);
 
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        try {
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.error || 'Upload failed');
+        } catch (e) {
+          throw new Error(`Upload failed: ${errorText}`);
+        }
       }
 
-      const data = await response.json();
+      const responseText = await response.text();
+      console.log('Response text:', responseText);
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('Error parsing JSON:', e);
+        throw new Error('Invalid response from server');
+      }
+      
       console.log('Upload successful:', data);
       
       setSuccess(`Successfully uploaded ${data.files.length} image(s)!`);
@@ -96,6 +115,7 @@ const ImageUpload = () => {
         setSuccess(null);
       }, 5000);
     } catch (err) {
+      console.error('Upload error:', err);
       setError(err.message || 'An error occurred during upload');
     } finally {
       setUploading(false);

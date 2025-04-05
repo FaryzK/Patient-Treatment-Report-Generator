@@ -1,0 +1,9 @@
+{
+  "ignore": [
+    "api/uploads/*",
+    "api/temp_paths.json",
+    "api/reports/*"
+  ],
+  "watch": ["api/*.js"],
+  "ext": "js,json"
+} 

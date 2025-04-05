@@ -25,3 +25,17 @@ dist-ssr
 
 # Uploaded files
 api/uploads/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+python/venv/
+python/.env
+
+# Generated reports
+api/reports/
+
+.env
