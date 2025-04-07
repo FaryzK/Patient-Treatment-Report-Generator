@@ -5,25 +5,28 @@ const ImageUpload = () => {
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [processStatus, setProcessStatus] = useState({
+    currentStep: '',
+    stepProgress: 0,
+    totalFiles: 0,
+    processedFiles: 0,
+    details: ''
+  });
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
   // Clean up previews when component unmounts
   useEffect(() => {
     return () => {
-      // Revoke the object URLs to avoid memory leaks
       previews.forEach(preview => URL.revokeObjectURL(preview.url));
     };
   }, [previews]);
 
   const onDrop = useCallback((acceptedFiles) => {
-    // Filter for image files
     const imageFiles = acceptedFiles.filter(file => 
       file.type.startsWith('image/')
     );
     
-    // Create new file objects with unique IDs
     const newFiles = imageFiles.map(file => ({
       id: Math.random().toString(36).substr(2, 9),
       file
@@ -33,7 +36,6 @@ const ImageUpload = () => {
     setError(null);
     setSuccess(null);
 
-    // Create preview URLs for the new files
     const newPreviews = newFiles.map(fileObj => ({
       id: fileObj.id,
       url: URL.createObjectURL(fileObj.file)
@@ -55,92 +57,123 @@ const ImageUpload = () => {
       return;
     }
 
+    let eventSource = null;
     setUploading(true);
-    setUploadProgress(0);
+    setProcessStatus({
+      currentStep: 'Preparing Upload',
+      stepProgress: 0,
+      totalFiles: files.length,
+      processedFiles: 0,
+      details: 'Starting upload...'
+    });
     setError(null);
     setSuccess(null);
 
-    const formData = new FormData();
-    files.forEach(fileObj => {
-      formData.append('images', fileObj.file);
-    });
-
     try {
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
+      // Set up SSE connection first
+      eventSource = new EventSource('http://localhost:3000/api/progress');
+      
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Progress update:', data);
+          setProcessStatus(data);
+          
+          if (data.currentStep === 'Complete' || data.currentStep === 'Error') {
+            eventSource.close();
           }
-          return prev + 10;
-        });
-      }, 300);
+        } catch (err) {
+          console.error('Error parsing SSE message:', err);
+        }
+      };
 
-      console.log('Sending upload request...');
-      const response = await fetch('/api/upload', {
+      eventSource.onerror = (error) => {
+        console.error('SSE connection error:', error);
+        eventSource.close();
+      };
+
+      // Prepare form data
+      const formData = new FormData();
+      files.forEach(fileObj => {
+        formData.append('images', fileObj.file);
+      });
+
+      // Send upload request
+      const response = await fetch('http://localhost:3000/api/upload', {
         method: 'POST',
         body: formData,
       });
 
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      console.log('Response status:', response.status);
-      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error response:', errorText);
-        try {
-          const errorData = JSON.parse(errorText);
-          throw new Error(errorData.error || 'Upload failed');
-        } catch (e) {
-          throw new Error(`Upload failed: ${errorText}`);
-        }
+        throw new Error(await response.text());
       }
 
-      const responseText = await response.text();
-      console.log('Response text:', responseText);
+      const data = await response.json();
+      console.log('Upload response:', data);
       
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        console.error('Error parsing JSON:', e);
-        throw new Error('Invalid response from server');
+      if (data.status === 'success') {
+        setSuccess(`Successfully processed ${files.length} images! PowerPoint presentation generated.`);
+        
+        // Clean up previews and files
+        previews.forEach(preview => URL.revokeObjectURL(preview.url));
+        setFiles([]);
+        setPreviews([]);
+      } else {
+        throw new Error(data.error || 'Processing failed');
       }
-      
-      console.log('Upload successful:', data);
-      
-      setSuccess(`Successfully uploaded ${data.files.length} image(s)!`);
-      
-      // Clean up previews and files
-      previews.forEach(preview => URL.revokeObjectURL(preview.url));
-      setFiles([]);
-      setPreviews([]);
-      
-      // Reset success message after 5 seconds
-      setTimeout(() => {
-        setSuccess(null);
-      }, 5000);
     } catch (err) {
-      console.error('Upload error:', err);
-      setError(err.message || 'An error occurred during upload');
+      console.error('Error:', err);
+      setError(err.message || 'An error occurred');
     } finally {
+      if (eventSource) {
+        eventSource.close();
+      }
       setUploading(false);
     }
   };
 
   const removeFile = (id) => {
-    // Find the preview to revoke its URL
     const preview = previews.find(p => p.id === id);
     if (preview) {
       URL.revokeObjectURL(preview.url);
     }
     
-    // Remove the file and preview with matching id
     setFiles(prevFiles => prevFiles.filter(f => f.id !== id));
     setPreviews(prevPreviews => prevPreviews.filter(p => p.id !== id));
+  };
+
+  // Helper function to render progress details
+  const renderProgressDetails = () => {
+    if (!processStatus.currentStep) return null;
+
+    const progress = processStatus.stepProgress;
+    const progressBarWidth = progress + '%';
+
+    return (
+      <div className="mt-6 space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-medium text-gray-700">
+            {processStatus.currentStep}
+          </span>
+          <span className="text-sm text-gray-500">
+            {processStatus.processedFiles} / {processStatus.totalFiles} files
+          </span>
+        </div>
+        <div className="relative pt-1">
+          <div className="overflow-hidden h-2 text-xs flex rounded bg-blue-200">
+            <div
+              style={{ width: progressBarWidth }}
+              className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-300"
+            />
+          </div>
+        </div>
+        {processStatus.details && (
+          <p className="text-sm text-gray-600 italic">
+            {processStatus.details}
+          </p>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -219,19 +252,8 @@ const ImageUpload = () => {
         </div>
       )}
 
-      {/* Upload Progress */}
-      {uploading && (
-        <div className="mt-6">
-          <div className="relative pt-1">
-            <div className="overflow-hidden h-2 text-xs flex rounded bg-blue-200">
-              <div
-                style={{ width: `${uploadProgress}%` }}
-                className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-500"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Progress Status */}
+      {renderProgressDetails()}
 
       {/* Success Message */}
       {success && (
@@ -257,7 +279,7 @@ const ImageUpload = () => {
               ? 'bg-gray-400 cursor-not-allowed' 
               : 'bg-blue-600 hover:bg-blue-700'}`}
         >
-          {uploading ? 'Uploading...' : 'Upload Images'}
+          {uploading ? 'Processing...' : 'Upload Images'}
         </button>
       </div>
     </div>

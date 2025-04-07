@@ -58,6 +58,9 @@ if (!fs.existsSync(reportsDir)) {
 // Keep track of active Python processes
 const activeProcesses = new Map();
 
+// Store progress information
+const progressStore = new Map();
+
 // Cleanup function for Python processes
 const cleanupPythonProcess = (processId) => {
   const process = activeProcesses.get(processId);
@@ -100,6 +103,38 @@ const getPythonPath = () => {
   return pythonPath;
 };
 
+// SSE endpoint for progress updates
+app.get('/api/progress', (req, res) => {
+  const headers = {
+    'Content-Type': 'text/event-stream',
+    'Connection': 'keep-alive',
+    'Cache-Control': 'no-cache',
+    'Access-Control-Allow-Origin': '*'
+  };
+  res.writeHead(200, headers);
+
+  // Send initial message to establish connection
+  res.write('data: {"currentStep": "Connecting...", "stepProgress": 0, "totalFiles": 0, "processedFiles": 0, "details": "Establishing connection..."}\n\n');
+
+  const clientId = Date.now().toString();
+  progressStore.set(clientId, res);
+
+  req.on('close', () => {
+    progressStore.delete(clientId);
+  });
+});
+
+// Helper function to send progress updates
+const sendProgress = (data) => {
+  progressStore.forEach((res) => {
+    try {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch (err) {
+      console.error('Error sending progress update:', err);
+    }
+  });
+};
+
 // API endpoint for file upload
 app.post('/api/upload', upload.array('images', 10), async (req, res) => {
   console.log('Upload request received');
@@ -112,6 +147,16 @@ app.post('/api/upload', upload.array('images', 10), async (req, res) => {
     }
 
     console.log(`Received ${req.files.length} files`);
+    const totalFiles = req.files.length;
+
+    // Update progress: Upload complete
+    sendProgress({
+      currentStep: 'Files uploaded',
+      stepProgress: 100,
+      totalFiles,
+      processedFiles: totalFiles,
+      details: 'All files uploaded successfully'
+    });
 
     // Get the file paths
     const filePaths = req.files.map(file => file.path);
@@ -125,175 +170,148 @@ app.post('/api/upload', upload.array('images', 10), async (req, res) => {
     // Run the Python script
     console.log('Spawning Python process...');
     
-    // First, check if Python is available
     try {
       const pythonPath = getPythonPath();
-      const pythonCheck = spawn(pythonPath, ['--version']);
-      pythonCheck.on('close', (code) => {
-        if (code !== 0) {
-          console.error('Python is not available');
-          // Return success without Python processing
-          res.status(200).json({
-            message: 'Files uploaded successfully (Python processing skipped)',
-            files: req.files.map(file => ({
-              filename: file.filename,
-              path: file.path,
-              size: file.size,
-              mimetype: file.mimetype
-            }))
+      const pythonProcess = spawn(pythonPath, [
+        path.join(__dirname, '../python/main.py'),
+        jsonPath,
+        reportsDir
+      ]);
+
+      // Store the process
+      activeProcesses.set(processId, pythonProcess);
+
+      let result = '';
+      let processedImages = 0;
+
+      pythonProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        console.log('Python stdout:', output);
+        result += output;
+
+        // Parse progress information from Python output
+        if (output.includes('Processing image')) {
+          const match = output.match(/Processing image (\d+) of (\d+)/);
+          if (match) {
+            const [_, current, total] = match;
+            processedImages = parseInt(current);
+            sendProgress({
+              currentStep: 'Analyzing Images',
+              stepProgress: Math.round((processedImages / totalFiles) * 100),
+              totalFiles,
+              processedFiles: processedImages,
+              details: `Analyzing image ${processedImages} of ${totalFiles}`
+            });
+          }
+        } else if (output.includes('classified as')) {
+          const match = output.match(/Image \d+ classified as (.+)/);
+          if (match) {
+            const [_, category] = match;
+            sendProgress({
+              currentStep: 'Analyzing Images',
+              stepProgress: Math.round((processedImages / totalFiles) * 100),
+              totalFiles,
+              processedFiles: processedImages,
+              details: `Last image classified as: ${category}`
+            });
+          }
+        } else if (output.includes('Generating PowerPoint')) {
+          sendProgress({
+            currentStep: 'Creating Presentation',
+            stepProgress: 90,
+            totalFiles,
+            processedFiles: totalFiles,
+            details: 'Generating PowerPoint presentation with processed images'
           });
-          
-          // Clean up the temporary JSON file
-          try {
-            fs.unlinkSync(jsonPath);
-            console.log('Temporary JSON file deleted');
-          } catch (err) {
-            console.error('Error deleting temporary file:', err);
-          }
-          return;
         }
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        console.error('Python stderr:', data.toString());
+      });
+
+      pythonProcess.on('close', (code) => {
+        console.log(`Python process exited with code ${code}`);
         
-        // Python is available, proceed with processing
-        const pythonProcess = spawn(pythonPath, [
-          path.join(__dirname, '../python/main.py'),
-          jsonPath,
-          reportsDir
-        ]);
+        // Clean up
+        cleanupPythonProcess(processId);
+        try {
+          fs.unlinkSync(jsonPath);
+          console.log('Temporary JSON file deleted');
+        } catch (err) {
+          console.error('Error deleting temporary file:', err);
+        }
 
-        // Store the process
-        activeProcesses.set(processId, pythonProcess);
+        if (code !== 0) {
+          sendProgress({
+            currentStep: 'Error',
+            stepProgress: 100,
+            totalFiles,
+            processedFiles: processedImages,
+            details: 'An error occurred during processing'
+          });
+          return res.status(500).json({ error: 'Python processing failed' });
+        }
 
-        let result = '';
-        let error = '';
+        try {
+          // Find the last line that looks like JSON
+          const jsonLine = result.split('\n')
+            .filter(line => line.trim())
+            .reverse()
+            .find(line => line.trim().startsWith('{') && line.trim().endsWith('}'));
 
-        pythonProcess.stdout.on('data', (data) => {
-          console.log('Python stdout:', data.toString());
-          result += data.toString();
-        });
+          if (!jsonLine) {
+            throw new Error('No JSON output found in Python response');
+          }
 
-        pythonProcess.stderr.on('data', (data) => {
-          console.error('Python stderr:', data.toString());
-          error += data.toString();
-        });
-
-        pythonProcess.on('close', (code) => {
-          console.log(`Python process exited with code ${code}`);
+          const output = JSON.parse(jsonLine);
           
-          // Clean up the process
-          cleanupPythonProcess(processId);
-          
-          // Clean up the temporary JSON file
-          try {
-            fs.unlinkSync(jsonPath);
-            console.log('Temporary JSON file deleted');
-          } catch (err) {
-            console.error('Error deleting temporary file:', err);
-          }
-
-          if (code !== 0) {
-            console.error('Python process error:', error);
-            // Return success with a warning about Python processing
-            res.status(200).json({
-              message: 'Files uploaded successfully (Python processing failed)',
-              files: req.files.map(file => ({
-                filename: file.filename,
-                path: file.path,
-                size: file.size,
-                mimetype: file.mimetype
-              })),
-              warning: 'Python processing failed: ' + error
+          if (output.status === 'success') {
+            sendProgress({
+              currentStep: 'Complete',
+              stepProgress: 100,
+              totalFiles,
+              processedFiles: totalFiles,
+              details: 'Processing complete! PowerPoint presentation generated.'
             });
-            return;
+            res.json(output);
+          } else {
+            throw new Error(output.error || 'Processing failed');
           }
-
-          try {
-            console.log('Parsing Python output:', result);
-            const output = JSON.parse(result);
-            if (output.status === 'error') {
-              console.error('Python returned error:', output.error);
-              // Return success with a warning about Python processing
-              res.status(200).json({
-                message: 'Files uploaded successfully (Python processing failed)',
-                files: req.files.map(file => ({
-                  filename: file.filename,
-                  path: file.path,
-                  size: file.size,
-                  mimetype: file.mimetype
-                })),
-                warning: 'Python processing failed: ' + output.error
-              });
-              return;
-            }
-
-            // Return the file information and the path to the generated PPT
-            console.log('Sending success response');
-            res.status(200).json({
-              message: 'Files processed successfully',
-              files: req.files.map(file => ({
-                filename: file.filename,
-                path: file.path,
-                size: file.size,
-                mimetype: file.mimetype
-              })),
-              report: {
-                path: output.output_path,
-                categories: output.categories
-              }
-            });
-          } catch (e) {
-            console.error('Error parsing Python output:', e);
-            console.error('Raw output:', result);
-            // Return success with a warning about Python processing
-            res.status(200).json({
-              message: 'Files uploaded successfully (Python processing failed)',
-              files: req.files.map(file => ({
-                filename: file.filename,
-                path: file.path,
-                size: file.size,
-                mimetype: file.mimetype
-              })),
-              warning: 'Error processing Python output: ' + e.message
-            });
-          }
-        });
-
-        // Handle client disconnect
-        req.on('close', () => {
-          console.log('Client disconnected, cleaning up Python process');
-          cleanupPythonProcess(processId);
-          try {
-            fs.unlinkSync(jsonPath);
-            console.log('Temporary JSON file deleted');
-          } catch (err) {
-            console.error('Error deleting temporary file:', err);
-          }
-        });
+        } catch (e) {
+          console.error('Error parsing Python output:', e);
+          sendProgress({
+            currentStep: 'Error',
+            stepProgress: 100,
+            totalFiles,
+            processedFiles: processedImages,
+            details: 'Error processing Python output'
+          });
+          res.status(500).json({ error: 'Error processing Python output: ' + e.message });
+        }
       });
+
     } catch (err) {
-      console.error('Error checking Python:', err);
-      // Return success without Python processing
-      res.status(200).json({
-        message: 'Files uploaded successfully (Python check failed)',
-        files: req.files.map(file => ({
-          filename: file.filename,
-          path: file.path,
-          size: file.size,
-          mimetype: file.mimetype
-        }))
+      console.error('Error running Python:', err);
+      sendProgress({
+        currentStep: 'Error',
+        stepProgress: 100,
+        totalFiles,
+        processedFiles: 0,
+        details: 'Error running Python process'
       });
-      
-      // Clean up the temporary JSON file
-      try {
-        fs.unlinkSync(jsonPath);
-        console.log('Temporary JSON file deleted');
-      } catch (err) {
-        console.error('Error deleting temporary file:', err);
-      }
+      res.status(500).json({ error: 'Error running Python process' });
     }
+
   } catch (error) {
     console.error('Upload error:', error);
-    // Clean up if there's an error
-    cleanupPythonProcess(processId);
+    sendProgress({
+      currentStep: 'Error',
+      stepProgress: 100,
+      totalFiles: req.files?.length || 0,
+      processedFiles: 0,
+      details: 'Error during upload process'
+    });
     res.status(500).json({ error: 'Error uploading files' });
   }
 });

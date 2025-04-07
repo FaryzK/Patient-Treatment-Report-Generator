@@ -113,7 +113,13 @@ class ImageProcessor:
             )
 
             # Extract the classification from the response
-            classification = int(response.output_text.strip())
+            response_text = response.output_text.strip()
+            # Extract just the number from the response
+            classification = int(''.join(filter(str.isdigit, response_text)))
+            
+            if not (1 <= classification <= 4):
+                print(f"Invalid classification number {classification} for {image_path}")
+                return 'unknown'
             
             # Map the classification number to the category
             category_map = {
@@ -128,12 +134,10 @@ class ImageProcessor:
             print(f"Error classifying image {image_path}: {str(e)}")
             return 'unknown'
 
-    def process_images(self, image_paths):
-        """Process a list of images and return their classifications and metadata."""
-        results = []
-        
-        for image_path in image_paths:
-            # Extract basic metadata
+    def process_single_image(self, image_path):
+        """Process a single image and return its classification and metadata."""
+        try:
+            # Extract metadata
             metadata = self.extract_metadata(image_path)
             if metadata:
                 # Get the classification for this image
@@ -151,7 +155,7 @@ class ImageProcessor:
                 metadata['classification'] = category
                 metadata['classification_label'] = category_label
                 
-                # Create a more detailed result object
+                # Create a detailed result object
                 result = {
                     'path': image_path,
                     'metadata': metadata,
@@ -161,6 +165,16 @@ class ImageProcessor:
                     'filename': os.path.basename(image_path)
                 }
                 
+                return result
+        except Exception as e:
+            print(f"Error processing image {image_path}: {str(e)}")
+            return None
+
+    def process_images(self, image_paths):
+        """Process a list of images and return their classifications and metadata."""
+        results = []
+        for image_path in image_paths:
+            result = self.process_single_image(image_path)
+            if result:
                 results.append(result)
-        
         return results 

@@ -15,9 +15,18 @@ async def process_images(image_paths, output_dir):
         ppt_generator = PPTGenerator()
         
         # Process images to get metadata
-        print("Extracting metadata and classifying images...")
-        processed_images = image_processor.process_images(image_paths)
-        print(f"Processed {len(processed_images)} images")
+        print("Starting image analysis...")
+        processed_images = []
+        
+        for i, image_path in enumerate(image_paths, 1):
+            print(f"Processing image {i} of {len(image_paths)}: {os.path.basename(image_path)}")
+            result = image_processor.process_single_image(image_path)
+            if result:
+                processed_images.append(result)
+                print(f"Image {i} classified as {result['category_label']}")
+            sys.stdout.flush()  # Ensure output is sent immediately
+        
+        print(f"Successfully processed {len(processed_images)} images")
         
         # Group images by category
         categorized_images = {
@@ -31,7 +40,6 @@ async def process_images(image_paths, output_dir):
         for image in processed_images:
             category = image['category']
             categorized_images[category].append(image)
-            print(f"Image {image['filename']} classified as {image['category_label']} ({category})")
         
         # Print category counts
         for category, images in categorized_images.items():
@@ -39,6 +47,8 @@ async def process_images(image_paths, output_dir):
         
         # Generate PowerPoint presentation
         print("Generating PowerPoint presentation...")
+        sys.stdout.flush()  # Ensure output is sent immediately
+        
         output_path = os.path.join(output_dir, 'treatment_report.pptx')
         ppt_generator.generate_presentation(categorized_images, output_path)
         print(f"Presentation saved to: {output_path}")
