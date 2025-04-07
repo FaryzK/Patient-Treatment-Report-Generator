@@ -16,6 +16,54 @@ const PORT = 3000;
 // Enable CORS for the frontend
 app.use(cors());
 
+// Remove or modify the static file serving
+app.use('/reports', (req, res, next) => {
+  if (req.path.endsWith('.pptx')) {
+    // Skip static serving for PPTX files
+    return next('route');
+  }
+  next();
+}, express.static(path.join(__dirname, 'reports')));
+
+// Add dedicated download endpoint with proper binary handling
+app.get('/api/download/:filename', (req, res) => {
+  const filename = req.params.filename;
+  
+  // Validate filename to prevent directory traversal
+  if (!filename || filename.includes('..') || !filename.endsWith('.pptx')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+
+  const filePath = path.join(__dirname, 'reports', filename);
+
+  // Check if file exists
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  // Set headers for binary file download
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Transfer-Encoding', 'binary');
+  res.setHeader('Cache-Control', 'no-cache');
+
+  // Create read stream with error handling
+  const fileStream = fs.createReadStream(filePath);
+  
+  fileStream.on('error', (error) => {
+    console.error('Error streaming file:', error);
+    // Only send error if headers haven't been sent
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Error streaming file' });
+    }
+  });
+
+  // Pipe the file stream to response with error handling
+  fileStream.pipe(res).on('error', (error) => {
+    console.error('Error piping file:', error);
+  });
+});
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -254,7 +302,6 @@ app.post('/api/upload', upload.array('images', 10), async (req, res) => {
         }
 
         try {
-          // Find the last line that looks like JSON
           const jsonLine = result.split('\n')
             .filter(line => line.trim())
             .reverse()
@@ -267,6 +314,10 @@ app.post('/api/upload', upload.array('images', 10), async (req, res) => {
           const output = JSON.parse(jsonLine);
           
           if (output.status === 'success') {
+            // Add download URL using the new endpoint
+            const filename = path.basename(output.output_path);
+            output.download_url = `/api/download/${filename}`;
+            
             sendProgress({
               currentStep: 'Complete',
               stepProgress: 100,
@@ -274,7 +325,11 @@ app.post('/api/upload', upload.array('images', 10), async (req, res) => {
               processedFiles: totalFiles,
               details: 'Processing complete! PowerPoint presentation generated.'
             });
-            res.json(output);
+            
+            // Add a small delay before sending response to ensure file is fully written
+            setTimeout(() => {
+              res.json(output);
+            }, 500);
           } else {
             throw new Error(output.error || 'Processing failed');
           }

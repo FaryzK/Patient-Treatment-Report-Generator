@@ -14,6 +14,7 @@ const ImageUpload = () => {
   });
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [downloadUrl, setDownloadUrl] = useState(null);
 
   // Clean up previews when component unmounts
   useEffect(() => {
@@ -59,6 +60,7 @@ const ImageUpload = () => {
 
     let eventSource = null;
     setUploading(true);
+    setDownloadUrl(null);
     setProcessStatus({
       currentStep: 'Preparing Upload',
       stepProgress: 0,
@@ -71,7 +73,7 @@ const ImageUpload = () => {
 
     try {
       // Set up SSE connection first
-      eventSource = new EventSource('http://localhost:3000/api/progress');
+      eventSource = new EventSource('/api/progress');
       
       eventSource.onmessage = (event) => {
         try {
@@ -99,7 +101,7 @@ const ImageUpload = () => {
       });
 
       // Send upload request
-      const response = await fetch('http://localhost:3000/api/upload', {
+      const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
@@ -112,7 +114,8 @@ const ImageUpload = () => {
       console.log('Upload response:', data);
       
       if (data.status === 'success') {
-        setSuccess(`Successfully processed ${files.length} images! PowerPoint presentation generated.`);
+        setSuccess(`Successfully processed ${files.length} images! PowerPoint presentation is ready for download.`);
+        setDownloadUrl(data.download_url);
         
         // Clean up previews and files
         previews.forEach(preview => URL.revokeObjectURL(preview.url));
@@ -255,10 +258,26 @@ const ImageUpload = () => {
       {/* Progress Status */}
       {renderProgressDetails()}
 
-      {/* Success Message */}
+      {/* Success Message and Download Button */}
       {success && (
-        <div className="mt-4 p-3 bg-green-100 text-green-700 rounded-md">
-          {success}
+        <div className="mt-4 space-y-4">
+          <div className="p-3 bg-green-100 text-green-700 rounded-md">
+            {success}
+          </div>
+          {downloadUrl && (
+            <div className="flex justify-center">
+              <a
+                href={downloadUrl}
+                download
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+                Download PowerPoint
+              </a>
+            </div>
+          )}
         </div>
       )}
 
