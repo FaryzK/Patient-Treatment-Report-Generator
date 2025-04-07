@@ -13,7 +13,7 @@ const ImageUpload = () => {
   useEffect(() => {
     return () => {
       // Revoke the object URLs to avoid memory leaks
-      previews.forEach(preview => URL.revokeObjectURL(preview));
+      previews.forEach(preview => URL.revokeObjectURL(preview.url));
     };
   }, [previews]);
 
@@ -23,12 +23,21 @@ const ImageUpload = () => {
       file.type.startsWith('image/')
     );
     
-    setFiles(prevFiles => [...prevFiles, ...imageFiles]);
+    // Create new file objects with unique IDs
+    const newFiles = imageFiles.map(file => ({
+      id: Math.random().toString(36).substr(2, 9),
+      file
+    }));
+    
+    setFiles(prevFiles => [...prevFiles, ...newFiles]);
     setError(null);
     setSuccess(null);
 
     // Create preview URLs for the new files
-    const newPreviews = imageFiles.map(file => URL.createObjectURL(file));
+    const newPreviews = newFiles.map(fileObj => ({
+      id: fileObj.id,
+      url: URL.createObjectURL(fileObj.file)
+    }));
     setPreviews(prevPreviews => [...prevPreviews, ...newPreviews]);
   }, []);
 
@@ -52,8 +61,8 @@ const ImageUpload = () => {
     setSuccess(null);
 
     const formData = new FormData();
-    files.forEach(file => {
-      formData.append('images', file);
+    files.forEach(fileObj => {
+      formData.append('images', fileObj.file);
     });
 
     try {
@@ -106,7 +115,7 @@ const ImageUpload = () => {
       setSuccess(`Successfully uploaded ${data.files.length} image(s)!`);
       
       // Clean up previews and files
-      previews.forEach(preview => URL.revokeObjectURL(preview));
+      previews.forEach(preview => URL.revokeObjectURL(preview.url));
       setFiles([]);
       setPreviews([]);
       
@@ -122,12 +131,16 @@ const ImageUpload = () => {
     }
   };
 
-  const removeFile = (index) => {
-    // Revoke the object URL to avoid memory leaks
-    URL.revokeObjectURL(previews[index]);
+  const removeFile = (id) => {
+    // Find the preview to revoke its URL
+    const preview = previews.find(p => p.id === id);
+    if (preview) {
+      URL.revokeObjectURL(preview.url);
+    }
     
-    setFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
-    setPreviews(prevPreviews => prevPreviews.filter((_, i) => i !== index));
+    // Remove the file and preview with matching id
+    setFiles(prevFiles => prevFiles.filter(f => f.id !== id));
+    setPreviews(prevPreviews => prevPreviews.filter(p => p.id !== id));
   };
 
   return (
@@ -171,34 +184,37 @@ const ImageUpload = () => {
         <div className="mt-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Selected Images</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {files.map((file, index) => (
-              <div key={index} className="relative group">
-                <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                  <img 
-                    src={previews[index]} 
-                    alt={file.name}
-                    className="w-full h-full object-cover"
-                  />
+            {files.map((fileObj) => {
+              const preview = previews.find(p => p.id === fileObj.id);
+              return (
+                <div key={fileObj.id} className="relative group">
+                  <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                    <img 
+                      src={preview?.url} 
+                      alt={fileObj.file.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="absolute inset-0 bg-black bg-opacity-40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeFile(fileObj.id);
+                      }}
+                      className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors"
+                      aria-label="Remove image"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500 truncate">
+                    {fileObj.file.name}
+                  </div>
                 </div>
-                <div className="absolute inset-0 bg-black bg-opacity-40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeFile(index);
-                    }}
-                    className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors"
-                    aria-label="Remove image"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="mt-1 text-xs text-gray-500 truncate">
-                  {file.name}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
